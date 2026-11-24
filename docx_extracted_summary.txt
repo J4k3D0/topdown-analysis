@@ -1,0 +1,393 @@
+Kiểm Toán Kỹ Thuật Bản Đặc Tả v4.0 Và Phiên Bản Sửa Đổi Đồng Bộ v5.0
+Rà soát toàn diện file gốc ke hoach xay dung he thong phan tich topdown.md (v4.0) đối chiếu với sổ tay nghiên cứu thực chiến và tình trạng hiện hành của các thư viện/API thị trường Việt Nam tính đến ngày 22/11/2026 cho thấy bản đặc tả hiện tại vẫn còn 10 lỗ hổng kỹ thuật nghiêm trọng cùng 3 câu hỏi cấu hình cụ thể cần chốt1. Nếu bàn giao nguyên bản v4.0 cho Antigravity (Gemini 3.8 Flash) lập trình, hệ thống sẽ gặp lỗi ngay từ Pha 1 ở tầng lấy dữ liệu (các phiên bản vnstock trước thế hệ 6 đã ngừng hoạt động từ 10/11/2026, còn vnstock thế hệ 6 chuyển các lớp chuẩn hóa sang Bản Mở rộng có thu phí và yêu cầu Open API Key của công ty chứng khoán)3, mất toàn bộ đường vẽ tay khi Streamlit tải lại trang5, lệch biên độ mục tiêu tới hơn 130 điểm phần trăm ở Gann Square of 9 do không khóa đơn vị giá6, và nhận sai danh sách mã cổ phiếu thuộc hệ sinh thái Vingroup cũng như nhóm công ty chứng khoán niêm yết1.
+Để tạo thành một hệ thống hoàn chỉnh, đồng bộ và sẵn sàng lập trình, báo cáo gồm hai phần liên kết trực tiếp. Phần 1 tổng hợp kết quả kiểm toán 10 lỗi kỹ thuật đã đối chiếu với tài liệu chính thức và kiểm thử định lượng, kèm 3 câu hỏi xác nhận cuối cùng cho các lựa chọn mang tính sở thích vận hành. Phần 2 là Bản Đặc Tả Hoàn Chỉnh v5.0 (Final Production Spec) sửa trực tiếp toàn bộ file gốc, khắc phục đồng bộ cả 10 lỗ hổng và khóa sẵn phương án mặc định hợp lý cho 3 câu hỏi để bạn có thể thay thế file gốc và chuyển thẳng sang bước triển khai code.
+Phần 1: Kết Quả Kiểm Toán v4.0 — 10 Lỗi Kỹ Thuật Và 3 Câu Hỏi Xác Nhận
+1.1. Bảng Tổng Hợp 10 Lỗ Hổng Và Mâu Thuẫn Trong File Gốc v4.0
+STT
+Hạng mục bị lỗi trong v4.0
+Bản chất lỗi / Mâu thuẫn thực tế
+Hậu quả nếu giữ nguyên khi code
+Giải pháp sửa đồng bộ trong v5.0
+1
+Nguồn dữ liệu vnstock miễn phí
+Bản v4.0 gọi Market("dnse"), Reference("dnse") và module Finance của vnstock với giả định "Community Edition, free"1. Thực tế các phiên bản trước thế hệ 6 đã ngừng hoạt động từ 10/11/20264; ở thế hệ 6 chỉ vnstock-oapi (kết nối phản hồi thô) miễn phí ở Bản Cộng đồng, còn vnstock chuẩn hóa thuộc Bản Mở rộng có thu phí, và mọi dữ liệu chứng khoán Việt Nam đều cần Open API Key của CTCK nơi mở tài khoản3. Ngoài ra, tài liệu lớp Market v6 không đề cập Open Interest cho phái sinh hay warrant().ohlcv(), còn báo cáo KQKD chuẩn VAS trong Fundamental ghi nhận nguồn fhsc12.
+Code lỗi ngay bước khởi tạo DB do không có bản quyền vnstock v6, thiếu API key, hoặc phát sinh AttributeError khi gọi hàm không được hỗ trợ.
+Chuyển sang kiến trúc Multi-Provider không phí bản quyền phần mềm: ưu tiên SSI FastConnect API V3 (ssi-sdk, hiện SSI chưa thu phí cho khách hàng có tài khoản SSI14, không cần OTP cho Market Data15, endpoint securitiesSummary có trường openInterest17), hỗ trợ tùy chọn vnstock-oapi làm cổng mở, dự phòng yfinance, FRED CSV cho Yield Curve18, và chuẩn hóa Import Excel/CSV cho BCTC/Margin/CW.
+2
+Persist đường vẽ tay Plotly vào SQLite
+Bản v4.0 bật modeBarButtonsToAdd=['drawline'] trên st.plotly_chart và yêu cầu lưu lâu dài các shape vừa vẽ vào SQLite1. Thực tế st.plotly_chart chỉ hỗ trợ sự kiện chọn điểm/vùng (on_select), không hỗ trợ relayoutData để gửi tọa độ các đường vẽ tay ngược về Python5.
+Toàn bộ đường trendline người dùng kẻ bằng drawline bị xóa sạch mỗi khi bấm slider, đổi chỉ báo hoặc bất kỳ thao tác rerun nào của Streamlit.
+Áp dụng cơ chế Hybrid Persist 2 lớp: dùng st.plotly_chart(..., on_select="rerun", selection_mode="points")19 cho phép chọn 2 điểm nến kết hợp bảng st.data_editor chỉnh tọa độ để lưu vĩnh viễn vào bảng user_drawings SQLite; giữ drawline làm bút phác thảo nhanh trong phiên (hoặc nâng cấp về sau bằng Streamlit Components v220).
+3
+Sai đơn vị giá trong Gann Square of 9
+Công thức  trong v4.0 không khóa đơn vị nghìn đồng (kVND) hay đồng (VND)1. Vì phép căn bậc hai không bất biến theo hệ số nhân 1.000, kết quả thay đổi hoàn toàn theo đơn vị nhập6.
+FPT đỉnh 123.3k ở góc 360° cho kết quả 82.88k (-32,8%) nếu tính theo kVND, nhưng lại ra 121.90k (-1,1%) nếu tính theo VND6.
+Khóa chuẩn lưu trữ 100% theo đơn vị nghìn đồng (kVND) trong bảng OHLCV cổ phiếu và công thức Square of 9, đồng thời thêm tham số chuẩn hóa scale_factor cho cổ phiếu mệnh giá thấp (< 10k) hoặc chỉ số (> 1.000 điểm).
+4
+Newton-Raphson phân kỳ & lệch đơn vị ở Black-Scholes CW
+Bản v4.0 dùng Newton-Raphson với seed cố định 30%1, không chuẩn hóa đơn vị giữa cổ phiếu cơ sở và chứng quyền, và không kiểm tra ngưỡng giá trị nội tại trước khi giải IV.
+Với CW OTM sâu (Deep OTM), Newton-Raphson phân kỳ ngay vòng lặp 0 (sigma = 73.92); với CW chiết khấu dưới giá trị nội tại, sigma nhảy âm (-1.0075); nếu lệch kVND so với VND, toàn bộ phép định giá sai hoàn toàn6.
+Quy đổi đồng bộ  về cùng đơn vị VNĐ; kiểm tra điều kiện ; thay Newton-Raphson bằng scipy.optimize.brentq trên [1e-4, 5.0] làm bộ giải chính6; khóa rõ công thức HV_60d chuẩn hóa năm (× √252).
+5
+Mâu thuẫn thuật toán Auto-Pitchfork 3 điểm & Gann Fan Log
+Bản v4.0 yêu cầu chọn  là đỉnh gần hiện tại nhất rồi tìm  bên phải , đồng thời yêu cầu  vừa "thấp nhất" vừa "gần nhất"1. Gann Fan lại định nghĩa tia 1×1 = 45° theo góc nhìn thị giác trên biểu đồ1.
+Nếu đỉnh gần nhất nằm sát cạnh phải đồ thị sẽ không có  bên phải → trả về None; hai tiêu chí thấp nhất và gần nhất xung đột nhau; góc 45° thị giác bị biến dạng mỗi lần zoom/pan6.
+Khử trùng lặp đỉnh/đáy phẳng; duyệt ngược tìm  gần hiện tại nhất có tồn tại bộ ba hợp lệ  với quy tắc ưu tiên xác định6. Định nghĩa Gann Fan bất biến bằng hệ số góc Log đơn vị 6.
+6
+Sai mã nhóm Vingroup (VGI) và lẫn lộn mã CTCK (TCBS, VPS, HSC)
+Bản v4.0 liệt kê nhóm Vingroup là (VIC, VHM, VRE, VGI...) và nhóm CTCK là (SSI, HCM, VCI, VND, TCBS, VPS, HSC...)1. Thực tế hệ sinh thái Vingroup niêm yết trên HOSE gồm 4 mã là VIC, VHM, VRE và Vinpearl (VPL) (chào sàn HOSE tháng 05/2025 với định giá gần 130.000 tỷ đồng); VGI không thuộc nhóm này7. Về nhóm CTCK, v4.0 trộn tên thương hiệu với mã chứng khoán, trong khi đến năm 2026 TCBS đã niêm yết với mã TCX (10/2025)8, VPBankS là VPX (12/2025)9 và VPS là VCK (12/2025)10; đồng thời không thể cộng thẳng dư nợ 15 CTCK vào chuỗi 78 CTCK (457.500 tỷ đồng Q3/2026)2.
+Loại nhầm mã ngoài hệ sinh thái thay vì Vinpearl (VPL) làm méo chỉ số Ex-Vingroup; gọi API BCTC cho chuỗi "TCBS", "VPS", "HSC" gây lỗi không tìm thấy mã và làm gãy chuỗi lịch sử Margin.
+Khóa danh sách nhóm Vingroup gồm đúng 4 mã ['VIC', 'VHM', 'VRE', 'VPL'] kèm công thức phân rã tỷ suất sinh lợi theo vốn hóa6. Sửa mã nhóm CTCK đầu ngành dùng đúng mã niêm yết (SSI, VCK, TCX, VPX, HCM, VCI, VND, MBS, VIX... mở rộng từ danh sách CTCK niêm yết) và tách riêng cột scope (market_total từ vnindex_margin_2000_2026.xlsx so với top15_proxy).
+7
+Thiếu ngày lễ mới 2026 & lệch ngày nghỉ bù trong lịch VN-Index
+Tự viết hàm tính âm lịch thủ công trong vn_holidays.py và chỉ liệt kê 5 dịp lễ truyền thống1, bỏ sót Ngày Văn hóa Việt Nam 24/11 áp dụng từ năm 2026 cùng các ngày nghỉ bù/hoán đổi (như 27/04/2026, 31/08/2026)25.
+VNIndexCalendarGuard phát cảnh báo dữ liệu cũ giả vào các ngày HOSE nghỉ lễ mới hoặc nghỉ bù.
+Dùng thư viện holidays (holidays.country_holidays('VN') đã cập nhật Ngày Văn hóa Việt Nam 24/1127) kết hợp file config/vn_holidays_override.json cho lịch nghỉ bù riêng của HOSE.
+8
+Khuyết công thức Tầng 3, JdK RRG 12W & ngoại lệ Screener
+Rubric Tầng 3 chấm theo "ngành đang xét" nên không tính được điểm toàn thị trường cho Master Dashboard và bỏ trống cách quy điểm tương quan 20W; không ghi công thức RRG 12W; Preset 1 áp Nợ/VCSH < 1.2 chung mà thiếu ngoại lệ cho nhóm Tài chính; và MA200(1M) trả về NaN với mọi cổ phiếu niêm yết dưới 16,7 năm (bao gồm các mã lớn mới niêm yết năm 2025 như VPL, TCX, VPX, VCK)1.
+Master Score không tính được Tầng 3; AI lập trình phải tự suy diễn công thức RRG; Screener loại oan nhóm Ngân hàng/Chứng khoán và bỏ lọt các mã có lịch sử giao dịch ngắn hơn 200 tháng.
+Tách rõ Market-Level  (phân bố 9 ngành trên 4 góc phần tư + xu hướng hàng hóa vĩ mô) và Stock-Level ; khóa công thức Z-score tương thích JdK6; miễn trừ Nợ/VCSH < 1.2 cho nhóm ICB Tài chính; bổ sung quy tắc dự phòng MA200(1M) → MA120(1M) → EMA200(1M).
+9
+Thiếu bảng user_settings, chỉ mục DB & quy chuẩn Resampling/Astro
+Schema SQLite thiếu bảng lưu Slider  và trọng số 5 tầng, thiếu INDEX(date) trên ohlcv_daily, thiếu listed_shares để tính tỷ trọng Vingroup, thiếu giá đóng cửa CW; chưa khóa chuẩn resampling ME (pandas ≥ 2.2) kèm cờ is_partial_bar; chưa xử lý bước nhảy góc 360° → 0° khi tính Thủy Tinh nghịch hành bằng ephem1.
+Mất cấu hình trọng số mỗi lần khởi động lại ứng dụng; truy vấn Market Breadth chậm khi DB phình to; lỗi ValueError trên pandas mới nếu dùng 'M'; nhận diện sai kỳ Thủy Tinh nghịch hành khi đi qua 0° kinh độ hoàng đạo.
+Bổ sung bảng user_settings, trường giá CW, listed_shares, INDEX, chuẩn resampling W-FRI / ME kèm last_bar_partial, và công thức chuẩn hóa độ lệch góc trong khoảng [-180°, +180°] cho ephem.
+10
+Trùng lặp cờ Auto-Alert ở trạng thái PARTIAL & lệch cấu trúc ứng dụng
+Khi lệnh chuyển sang PARTIAL (đã chốt 50% tại Target 1) nhưng giá tiếp tục nằm trên Target 1, logic v4.0 vẫn phát lặp cảnh báo chốt 50%; chưa chốt số lượng mã tải vào Local DB; mục 4.3 ghi 7 trang nhưng liệt kê 8 file (app.py + 7 trang con)1.
+Cảnh báo danh mục bị nhiễu khi gồng 50% vị thế còn lại (như case NLG); dễ chạm giới hạn rate-limit nếu tải tràn lan toàn bộ 3 sàn; gây nhầm lẫn khi nghiệm thu giao diện.
+Khóa máy trạng thái Auto-Alert phân biệt rõ OPEN và PARTIAL + công thức pnl_pct bình quân gia quyền; phân cấp Stock Universe 3 Tier (mặc định Tier 1 ~150 mã); thống nhất cách gọi là app.py + 7 trang con.
+1.2. Kiểm Chứng Định Lượng Hai Lỗi Toán Học Ẩn Nguy Hiểm Nhất Trong v4.0
+Khác với lỗi kết nối API làm chương trình dừng ngay lập tức, hai sai sót toán học nghiêm trọng nhất trong v4.0 — sự nhạy cảm đơn vị ở Gann Square of 9 và hiện tượng phân kỳ của Newton-Raphson khi giải Implied Volatility (IV) cho Chứng quyền — thuộc nhóm lỗi im lặng (hệ thống vẫn chạy nhưng trả về giá trị sai lệch lớn). Kết quả kiểm thử trên các trường hợp thực chiến FPT, KDH, NLG và 4 kịch bản chứng quyền được đối chiếu trực tiếp dưới đây.
+Kết quả mô phỏng định lượng cho thấy hai hàm ý thiết kế quan trọng. Thứ nhất, với Gann Square of 9, bản chất của phép cộng góc vào  phụ thuộc trực tiếp vào độ lớn số học của : khi nhân giá lên 1.000 lần (từ nghìn đồng sang đồng),  tăng gấp  lần, làm bước nhảy góc bị nén về gần 06. Ở lệnh mua NLG tại 21.2k, mốc góc 90° theo kVND cho mục tiêu 26.05k (+22,9%) — khớp sát với vùng Target 1 thực chiến 26.20–26.80k và BVPS 26.18k của NLG2; còn góc 180° cho 31.41k (+48,2%) — sát vùng Target 2 (29.50–31.30k)2. Ngược lại, nếu nhập theo đơn vị đồng (21.200), hai mốc này bị bóp méo chỉ còn 21.35k và 21.49k6. Thứ hai, ở tầng định giá Chứng quyền, các mã OTM sâu có độ nhạy Vega tiến gần 0 khiến bước nhảy đạo hàm của Newton-Raphson văng ra khỏi miền hợp lệ ngay vòng lặp đầu (sigma = 73.92)6. Chuyển sang thuật toán ngoặc nghiệm scipy.optimize.brentq kết hợp kiểm tra điều kiện giá trị nội tại và khóa đơn vị VNĐ giúp bộ giải hội tụ ổn định trên toàn miền hợp lệ (như ra đúng IV = 93,16% ở kịch bản Deep OTM) và chặn sạch giá trị nhiễu6.
+1.3. Ba Câu Hỏi Xác Nhận Cụ Thể Trước Khi Bàn Giao Code (Đã Khóa Mặc Định Trong v5.0)
+Mười lỗ hổng kỹ thuật phía trên mang tính khách quan nên đã được xử lý triệt để trong Phần 2. Hiện chỉ còn 3 điểm thuộc quyền chọn vận hành của bạn — bạn có thể giữ nguyên phương án mặc định đã khóa sẵn trong bản v5.0 hoặc trả lời ngắn gọn theo số 1 → 3:
+Chốt khóa API nguồn dữ liệu chứng khoán Việt Nam: Bạn muốn dùng ngay SSI FastConnect API V3 (ssi-sdk, hiện SSI chưa thu phí cho khách hàng có tài khoản SSI, chỉ cần tạo cặp API_KEY + API_SECRET trên SSI Developer Portal14) làm nguồn dữ liệu chính (mặc định đã khóa trong v5.0), hay bạn đang sở hữu gói Vnstock Mở rộng (trả phí) / DNSE Open API muốn ưu tiên kết nối trước? (Lưu ý: SSI MCP bạn đã kết nối với ChatGPT/OpenCode2 phục vụ truy vấn qua trợ lý AI, còn ứng dụng Python Streamlit cần kết nối trực tiếp qua SSI FastConnect V3 REST API để đồng bộ hàng trăm mã vào SQLite ổn định).
+Chốt quy mô Vũ trụ Cổ phiếu (Stock Universe) khởi tạo mặc định: Bạn đồng ý dùng Tier 1 — Fast Core (~150 mã: VN100 + Đại diện 9 ngành ICB + Nhóm CTCK đầu ngành + 4 mã Vingroup + Watchlist cá nhân) làm mức khởi tạo mặc định để tối ưu tốc độ tải và tránh chạm rate-limit (mặc định đã khóa trong v5.0), hay muốn khởi tạo ngay Tier 2 — Full HOSE (~400 mã) từ lần chạy đầu tiên để chỉ số Market Breadth phủ kín toàn sàn HOSE?
+Chốt cơ chế lưu Đường Trendline vẽ tay & Xác nhận loại bỏ Point & Figure (P&F): Do hạn chế của st.plotly_chart5, bạn đồng ý bản v1.0 dùng cơ chế Chọn 2 điểm nến (on_select) + Bảng tọa độ st.data_editor để lưu vĩnh viễn vào SQLite (giữ drawline làm bút phác thảo nhanh trong phiên) nhằm đảm bảo 100% thuần Python/Streamlit (mặc định đã khóa trong v5.0), hay muốn phát triển thêm Custom Component JavaScript (Streamlit Components v220)? Đồng thời, xác nhận lại bạn vẫn giữ quyết định loại bỏ Point & Figure (P&F) theo bản v4.01 (mặc định v5.0 giữ nguyên: không đưa P&F), vì trước đó ở bản v3.0 từng có yêu cầu đưa P&F vào2.
+Phần 2: Bản Đặc Tả Hệ Thống Hoàn Chỉnh Đồng Bộ (v5.0 Final Production Spec)
+Toàn bộ nội dung từ đây trở xuống là phiên bản hợp nhất thay thế trực tiếp file gốc ke hoach xay dung he thong phan tich topdown.md, đã đồng bộ hoàn toàn giữa phương pháp luận giao dịch thực chiến, đặc tả toán học, lược đồ SQLite, danh mục thư viện và lộ trình nghiệm thu 4 pha cho Antigravity / Gemini 3.8 Flash.
+Phiên bản tài liệu: v5.0 — FINAL PRODUCTION-READY SPEC (Cập nhật ngày 22/11/2026: chuẩn hóa nguồn dữ liệu không phụ thuộc gói vnstock v6 trả phí, khóa đơn vị kVND/VND, hoàn thiện thuật toán Pitchfork/Gann/RRG/Black-Scholes brentq, sửa mã Vingroup VPL & nhóm CTCK niêm yết 2026, đồng bộ SQLite WAL & Streamlit Persist)
+Đối tượng triển khai code: Antigravity / Gemini 3.8 Flash
+Nền tảng mục tiêu: Python 3.11+, SQLite Local Database (WAL mode + Indexed), Streamlit Multi-page Web App (app.py + 7 trang con, Dark Mode Pro, Plotly 100% Log Interactive Charts, Auto-Report Generator)
+Nguồn phương pháp luận: Thực chiến cá nhân (Case Study KDH, NLG, FPT, VCG tháng 11/2026), khung PTCB + QTRR tham khảo vfin.vn, và chuẩn hóa học thuật từ bộ sách Wiley Trading (John Murphy, Martin Pring, John Ehlers, Alan Andrews / Timothy Morge, W.D. Gann).
+2.1. Tóm Tắt Toàn Bộ Quyết Định Đã Khóa (Locked Architecture v5.0)
+Hạng mục
+Phương án đã khóa (v5.0)
+Yêu cầu bắt buộc khi Antigravity viết code
+1. Chiến lược Nguồn dữ liệu
+Multi-Provider: SSI FastConnect V3 (ssi-sdk) + yfinance + FRED CSV + Local Excel/CSV (cổng mở vnstock-oapi)
+Không phụ thuộc lớp vnstock v6 trả phí (Market/Reference/Fundamental) trừ khi người dùng kích hoạt gói Mở rộng3. Dùng SSIFastConnectProvider (ssi-sdk, hiện SSI chưa thu phí cho khách hàng có tài khoản SSI, không cần OTP cho Market Data14) làm nguồn chính cho OHLCV, Index, Danh sách mã, Corporate Actions và securitiesSummary (có openInterest17). Hỗ trợ tùy chọn VnstockOAPIProvider (vnstock-oapi Bản Cộng đồng11) và dự phòng YFinanceProvider (.VN + toàn bộ dữ liệu quốc tế). Yield Curve tải trực tiếp từ FRED CSV18. Dữ liệu Margin (2000–2026) nạp từ vnindex_margin_2000_2026.xlsx2 kết hợp CSV/Excel chuẩn hóa cho BCTC và CW.
+2. Kiến trúc Local DB & Lịch VN-Index
+Local-First DB (SQLite WAL + Indexed) + VNIndexCalendarGuard
+Khởi tạo và cập nhật Database cục bộ trước; toàn bộ thao tác Quét mã/RRG/Backtest/Breadth chỉ đọc từ data/quant_local.db (mục tiêu tốc độ phản hồi dưới 1 giây)1. Tự đối chiếu db_last_date với ngày giao dịch gần nhất của VN-Index (sau 15:05 giờ VN, bỏ T7, CN và ngày lễ qua thư viện holidays có Ngày Văn hóa 24/11 + file override nghỉ bù HOSE25).
+3. Chuẩn hóa Giá & Đơn vị
+100% Giá đã điều chỉnh (Adjusted Price) & Khóa đơn vị kVND
+Toàn bộ OHLCV cổ phiếu lưu dạng giá đã điều chỉnh theo đơn vị nghìn đồng (kVND) (ví dụ KDH = 14.0, NLG = 21.2, FPT = 123.3)2. Nếu nguồn API trả giá chưa điều chỉnh, DataNormalizer kiểm tra và áp dụng hệ số điều chỉnh từ corporateActions32. Chỉ số (VNINDEX, VN30) lưu nguyên điểm. Khi tính Black-Scholes CW, quy đổi đồng bộ  sang đơn vị VNĐ6. Resample chuẩn W-FRI và ME (pandas ≥ 2.2) kèm cờ last_bar_partial.
+4. Stock Universe (Phạm vi quét)
+3 Cấp linh hoạt (Mặc định Tier 1 ~150 mã)
+Tier 1 (Mặc định): VN100 + Đại diện 9 ngành ICB + Nhóm CTCK đầu ngành + 4 mã Vingroup + Watchlist cá nhân (~150 mã). Tier 2 (Tùy chọn): Toàn bộ HOSE (~400 mã) cho Breadth toàn sàn. Tier 3: Custom Watchlist chỉnh trên UI.
+5. Thang đo Đồ thị
+100% Log Scale
+Khóa cứng yaxis_type="log" trên cả 3 khung 1M → 1W → 1D cho toàn bộ đồ thị giá1.
+6. Auto-Pitchfork 3 điểm
+2 chiều Đối xứng (Bearish & Bullish) + Swing Window (N=5)
+Dùng scipy.signal.argrelextrema(..., order=N) (slider N từ 2 đến 20), khử trùng lặp đỉnh/đáy phẳng, duyệt ngược chọn  gần hiện tại nhất có tồn tại bộ ba  hợp lệ6. Vẽ 1 Bearish + 1 Bullish (checkbox bật/tắt), Warning Lines mặc định TẮT. Tính trung điểm bằng trung bình nhân trên trục .
+7. Trendline Persist & W.D. Gann
+Hybrid Auto + Chọn 2 điểm Persist SQLite + Gann Log (KHÔNG có P&F)
+Auto-Trendline trên trục Log + lưu đường vẽ tay vĩnh viễn vào SQLite bằng cơ chế Chọn 2 điểm nến (st.plotly_chart on_select="rerun")19 kết hợp bảng chỉnh tọa độ st.data_editor (khắc phục việc thiếu relayoutData5); giữ drawline làm bút phác thảo nhanh trong phiên. Gann Fan/Box định nghĩa bất biến theo hệ số góc Log đơn vị6; Square of 9 khóa đơn vị kVND6.
+8. Trọng số Top-Down & Ex-Vingroup
+10% – 20% – 20% – 10% – 40% (lưu vào user_settings)
+Thiên văn/Gann (10%, slider người dùng tự chấm lưu bền vững) + Vĩ mô/Margin/Yield Curve (20%) + Hàng hóa/RRG Ngành (20%, tách Market-Level vs Stock-Level) + Phái sinh/Độ rộng (10%) + VN-Index 1M-1W-1D (40%, tùy chọn loại 4 mã Vingroup: VIC, VHM, VRE, VPL7).
+9. Định giá Chứng quyền (Tầng 6)
+Black-Scholes Call Warrant + scipy.optimize.brentq
+Thay Newton-Raphson bằng brentq trên [1e-4, 5.0] + kiểm tra ngưỡng nội tại để chống phân kỳ với CW Deep OTM hoặc chiết khấu6. HV_60d tính theo log-return chuẩn hóa năm (× √252).
+10. Quản trị Vị thế & Auto-Alert
+Scaling-Out 50/50 + Máy trạng thái OPEN/PARTIAL/CLOSED (Chỉ BUY)
+Nhật ký chỉ hỗ trợ lệnh BUY. Tự đối chiếu giá đóng cửa mới nhất trong Local DB theo đúng trạng thái: khi PARTIAL (đã chốt 50% tại Target 1), tắt cờ Target 1 và chỉ giám sát Trailing Stop + Target 2; tính pnl_pct bình quân gia quyền.
+2.2. Giải Phẫu Case Study Thực Chiến & Module Lịch Sử Luân Chuyển Ngành
+Ma Trận Giải Phẫu Đa Khung 1M → 1W → 1D Trên Thang Logarit
+Khung thời gian
+Vai trò trong Hệ thống
+Cấu trúc thực chiến (KDH mua 14.0 — 05/11/2026; NLG mua 21.2 — 03/11/2026)
+Quy tắc định lượng hóa cho Bộ lọc (v5.0)
+Khung Tháng (1M - Log)
+Định vị chu kỳ lớn & vùng hỗ trợ lịch sử
+Giá rút chân tại hợp lưu: MA200 + EMA200 + hỗ trợ lịch sử + biên dưới Bullish Pitchfork. Fisher(9) 1M ở cực trị âm sâu (< -2.5; KDH chạm -3.82)2.
+Vùng Đáy Chu Kỳ (Stage 1 → 2): Giá nằm trong biên độ ±8% quanh mốc dài hạn tham chiếu MA_long_1M (MA200(1M) nếu ≥ 200 tháng, fallback MA120(1M) nếu 120–199 tháng, hoặc EMA200(1M) nếu < 120 tháng) hoặc biên dưới Bullish Pitchfork 1M; Fisher(9) 1M < -2.0 và bắt đầu bẻ ngang () hoặc cắt lên.
+Khung Tuần (1W - Log)
+Xác nhận dòng tiền lớn & đảo chiều xu hướng trung hạn
+Khối lượng tuần bùng nổ (2,58× SMA9(Vol) ở KDH)2. MACD(12, 26, 9) Histogram thu hẹp đà giảm hoặc mở rộng dương; RSI(14) thoát quá bán.
+Xác nhận Dòng tiền: Volume 1W ≥ 1.8 × SMA9(Vol), MFI(14) 1W > 45 và hướng lên, giá giữ vững biên dưới hoặc phá vỡ cạnh trên Bearish Pitchfork 1W.
+Khung Ngày (1D - Log)
+Căn điểm vào lệnh (Entry), quản trị vị thế & chốt lời
+Fisher(9) 1D cắt lên đường tín hiệu từ vùng âm sâu (Entry). Khi giá tiến sát cản MA120/EMA120 1D và Fisher(9) 1D > +1.9 → quá mua ngắn hạn (chốt 50%)2.
+Quy tắc Scaling-Out 50/50: Mua khi Fisher(9) 1D cắt lên + vượt EMA21. Chốt 50% khi Fisher(9) 1D > +2.0 chạm cản EMA120/MA120 1D; giữ 50% với Trailing Stop dưới EMA21/MA50 1D để ăn sóng khung Tuần.
+Lớp Lọc An Toàn Bảng Cân Đối (Balance Sheet Gatekeeper — Tham Khảo vfin.vn)
+Mọi cổ phiếu vượt qua tín hiệu kỹ thuật đều đi qua lớp kiểm tra cơ bản nạp từ bảng fundamentals trong SQLite (hỗ trợ cập nhật qua file data/manual/fundamentals_manual.csv, UI Editor, hoặc cổng API mở rộng). Ba điều kiện lọc được chuẩn hóa như sau:
+Đòn bẩy an toàn có phân tách ngành: Áp dụng ngưỡng Nợ vay / Vốn chủ sở hữu < 1.2 chỉ cho doanh nghiệp Phi tài chính; tự động miễn trừ điều kiện này cho nhóm Tài chính (Ngân hàng, Chứng khoán, Bảo hiểm có cờ is_financial = 1) nhằm tránh loại nhầm các doanh nghiệp có cấu trúc đòn bẩy đặc thù.
+Định giá chiết khấu cho Preset Bắt đáy Chu kỳ: Yêu cầu P/B ≤ 1.3, ưu tiên vùng dưới giá trị sổ sách (P/B < 1.0, như NLG mua tại 21.2 tương đương P/B = 0,81x so với BVPS 26.18k2).
+Thanh khoản thực: Giá trị giao dịch trung bình 20 phiên ≥ 15 tỷ VNĐ/phiên (tính từ Close_kVND × Volume / 1e6 ≥ 15.0) để loại bỏ các cổ phiếu bo cung hoặc có nguy cơ kẹt thanh khoản giải chấp như trường hợp KOS2. Với các mã chưa kịp nạp BCTC vào DB, hệ thống gắn nhãn trạng thái FUNDAMENTAL_MISSING (có checkbox cho phép ẩn/hiện trên UI thay vì âm thầm loại bỏ).
+Module Lịch Sử Luân Chuyển Ngành (Sector Rotation Backtest — Chuẩn Martin Pring / John Murphy)
+Hệ thống xây dựng chỉ số đại diện dạng bình quân gia quyền đều (Equal-Weighted Price Index, chuẩn hóa mốc 100 tại ngày bắt đầu) cho 9 nhóm ngành chính Việt Nam lưu trong config/tickers.py gồm Ngân hàng, Chứng khoán, Bất động sản, Thép/VLXD, Dầu khí, Bán lẻ, Công nghệ, Điện/Nước và Đầu tư công (mỗi ngành gồm 5–10 mã thanh khoản đầu ngành nằm trong Local DB). Bộ Backtest đo hiệu suất Simple Return (trên chuỗi giá đã điều chỉnh cổ tức/chia tách) sau các mốc chu kỳ lịch sử (Đáy 03/2020, Đỉnh 04/2022, Đáy 11/2022, Đỉnh 02/2026 và nhịp chỉnh 20262) tại các khung +1M, +3M, +6M và +12M để đối chiếu quy luật luân chuyển dòng tiền theo 4 pha kinh tế của Martin Pring.
+2.3. Đặc Tả Toán Học & Thuật Toán Lõi (Core Quant Engine v5.0)
+Quy Ước Đơn Vị Giá, Không Gian Logarit & Resampling
+Toàn bộ cột open, high, low, close của cổ phiếu trong ohlcv_daily được lưu theo giá đã điều chỉnh ở đơn vị nghìn đồng (kVND); nếu nguồn API trả về đơn vị VND, lớp DataNormalizer chia cho 1.000 trước khi ghi vào SQLite, đồng thời đối chiếu sự kiện quyền (corporateActions) nếu nguồn cung cấp là giá chưa điều chỉnh. Các chỉ số thị trường (VNINDEX, VN30, HNXINDEX) lưu nguyên điểm số. Mọi phép tính hình học (Pitchfork, Auto-Trendline, Gann Fan, Gann Box) đều thực hiện trong không gian Log cơ số 10 theo chỉ số nến nguyên liên tục (loại bỏ khoảng trống cuối tuần và ngày lễ):
+Khi chuyển khung từ ngày sang tuần và tháng, hệ thống dùng df.resample("W-FRI", label="right", closed="right") cho khung 1W và df.resample("ME", label="right", closed="right") cho khung 1M (tương thích pandas ≥ 2.2) với quy tắc tổng hợp open="first", high="max", low="min", close="last", volume="sum", sau đó bỏ các kỳ rỗng. Nếu ngày giao dịch cuối cùng của nến tuần chưa rơi vào Thứ Sáu hoặc ngày cuối của nến tháng chưa phải ngày giao dịch cuối tháng, hệ thống bật thuộc tính df.attrs["last_bar_partial"] = True để gắn chú thích nến đang hình thành trên giao diện đồ thị.
+Auto-Pitchfork 3 Điểm Xác Định Trên Trục Logarit
+Đầu vào phát hiện Pivot sử dụng scipy.signal.argrelextrema(high_log, np.greater_equal, order=N)[0] và argrelextrema(low_log, np.less_equal, order=N)[0] với cửa sổ mặc định N = 5 (slider UI chỉnh từ 2 đến 20). Để tránh nhiễu do các phiên giá đi ngang bằng nhau (plateau), thuật toán khử trùng lặp chỉ số liên tiếp bằng cách giữ lại chỉ số bên phải nhất (mới nhất) trong mỗi cụm đỉnh/đáy phẳng6.
+Với Chế độ 1 — Bearish / Corrective Pitchfork (tìm điểm phá vỡ kênh giảm), thuật toán duyệt ngược từng ứng viên  trong danh sách Swing High từ gần hiện tại nhất lùi về quá khứ cho tới khi gặp  đầu tiên tồn tại tập đáy khả thi feasible_p2s6. Một Swing Low  được coi là khả thi nếu , , và tồn tại ít nhất một Swing High  thỏa  cùng 6. Trong tập khả thi, hệ thống chọn  có đáy thấp nhất (nếu hòa giá, ưu tiên chỉ số nhỏ hơn — tức gần  nhất), sau đó chọn  có đỉnh cao nhất (tie-break: gần  nhất)6. Chế độ 2 — Bullish Pitchfork thực hiện đối xứng hoàn toàn bằng cách duyệt ngược từ Swing Low gần hiện tại nhất tìm  (Swing High cao nhất bên phải )  (Swing Low thấp nhất bên phải  với ). Nếu không có bộ ba hợp lệ trên toàn khung nhìn, hàm trả về None an toàn. Phương trình ba đường Pitchfork bắt buộc tính trung điểm bằng trung bình nhân trên trục Log:
+Giao diện vẽ đồng thời 1 Bearish Pitchfork và 1 Bullish Pitchfork kèm checkbox bật/tắt riêng từng loại; các đường Warning Lines ±50% và ±100% theo khoảng cách  mặc định TẮT và có checkbox bật tùy chọn1.
+Bộ Chỉ Báo Kỹ Thuật Chuẩn Hóa
+Hệ thống chuẩn hóa 5 nhóm chỉ báo kỹ thuật cốt lõi trong core/indicators.py:
+Đường Trung bình Động: Mặc định vẽ EMA(120), EMA(200), MA(120), MA(200) cùng hai đường dẫn sóng EMA(21) và MA(50) (checkbox bật/tắt)1. Trên khung 1M, khi lịch sử cổ phiếu < 200 tháng, EMA(200) tính bằng ewm(span=200, adjust=False) kèm cờ warming_up nếu < 60 nến, đồng thời Screener dùng chuỗi dự phòng MA200(1M) → MA120(1M) → EMA200(1M) và hiển thị rõ mốc đang đối chiếu.
+RSI(14) & Phân kỳ Tự động: Tính theo Wilder's Smoothing (). Phát hiện phân kỳ dương (2 Swing Low gần nhất có giá tạo đáy thấp hơn nhưng RSI tạo đáy cao hơn) và phân kỳ âm (2 Swing High gần nhất có giá tạo đỉnh cao hơn nhưng RSI tạo đỉnh thấp hơn) bằng cùng tham số Swing Window N trên cả 3 khung 1M, 1W, 1D, vẽ đường nối và nhãn chú thích trực tiếp lên panel chỉ báo.
+MACD(12, 26, 9): Tính EMA12 - EMA26, đường tín hiệu EMA9(MACD) và Histogram = MACD - Signal.
+Ehlers Fisher Transform(9): Khởi tạo , dùng expanding window nếu chuỗi < 9 nến và gán phần chuẩn hóa bằng 0 khi  để tránh chia cho 0:
+Dòng tiền & Khối lượng: Tính MFI(14) và VolRatio = Volume_t / SMA9(Volume) (tô nổi bật các cột thanh khoản khi VolRatio ≥ 1.8)1.
+Auto-Trendline & Lưu Đường Vẽ Tay Bền Vững Vào SQLite
+Auto-Trendline nối các cặp Swing High giảm dần và Swing Low tăng dần (dùng cùng Swing Window N trong không gian ) để chọn tối đa 2 đường kháng cự giảm gần nhất và 2 đường hỗ trợ tăng gần nhất không bị giá đóng cửa Close xuyên thủng quá 2 lần, kéo dài tới nến cuối cùng của đồ thị1.
+Đối với đường vẽ tay cần lưu lâu dài qua nhiều phiên sử dụng, do st.plotly_chart không trả về sự kiện relayoutData cho công cụ drawline5, hệ thống áp dụng quy trình lưu bền vững thuần Python/Streamlit bằng st.plotly_chart(..., on_select="rerun", selection_mode="points")19:
+Người dùng bật chế độ "Kẻ Trendline Lưu DB", chọn điểm neo (High, Low hoặc Close) rồi click lần lượt 2 nến trên đồ thị (hoặc nhập trực tiếp ngày/giá trong bảng st.data_editor bên dưới biểu đồ để tránh độ trễ click nếu muốn tinh chỉnh chính xác34).
+Hệ thống lưu bản ghi (ticker, timeframe, date_1, price_1, date_2, price_2, extend_right, color, label) vào bảng user_drawings trong SQLite và vẽ lại thành đường thẳng chuẩn trên thang Log mỗi khi tải lại mã.
+Thanh công cụ modeBarButtonsToAdd=['drawline', 'drawopenpath', 'eraseshape'] vẫn được bật để phác thảo trực quan nhanh trong phiên hiện tại, kèm ghi chú phân biệt rõ giữa nét phác thảo tạm thời và Trendline đã lưu DB.
+Bộ Công Cụ W.D. Gann Chuẩn Hóa Trên Trục Log & Đơn Vị kVND
+Gann Time Cycles & Fibonacci Time: Từ một ngày Đỉnh hoặc Đáy gốc chọn trên giao diện, hệ thống tự động chiếu các đường dọc thời gian tại mốc +30, +45, +60, +90, +144, +180, +360 ngày lịch và +21, +34, +55, +89, +144 phiên giao dịch (loại trừ cuối tuần và ngày lễ VN)1.
+Gann Square of 9 khóa đơn vị kVND: Với giá gốc  ở đơn vị kVND (như FPT 123.3, KDH 14.0, NLG 21.26), hệ số k = 1.0 mặc định (slider 0.5–2.0) và scale_factor  mặc định (tùy chọn s = 10.0 cho cổ phiếu < 10 kVND hoặc s = 0.1 cho chỉ số > 1.000 điểm), công thức tính các mức hỗ trợ/kháng cự tại các góc 45°, 90°, 180°, 270°, 360° theo cả hai chiều tăng/giảm là:
+Gann Fan & Gann Box bất biến trên trục Log: Chọn cặp điểm neo Đỉnh/Đáy  (mặc định tự lấy 2 pivot gần nhất, cho phép đổi trên UI) để hiệu chuẩn hệ số góc Log đơn vị  cho tia 1×16. Năm tia tỷ lệ  (ứng với 4×1, 2×1, 1×1, 1×2, 1×4) được vẽ theo phương trình , giúp góc tia không bị méo khi người dùng zoom/pan6. Lưới Gann Box chia đều khoảng thời gian  và khoảng Log giá  theo các tỷ lệ 25%, 50%, 75%.
+Mô Hình Thiên Văn (core/astro_engine.py) & Định Giá Chứng Quyền Black-Scholes (core/black_scholes.py)
+Ở tầng Thiên văn, ephem tính các mốc Trăng Non (next_new_moon) và Trăng Tròn (next_full_moon) quy đổi sang múi giờ Việt Nam (UTC+7)35. Để xác định kỳ Thủy Tinh nghịch hành chính xác qua mốc kinh độ hoàng đạo 360° → 0°, hệ thống lấy kinh độ địa tâm hằng ngày lon_t = math.degrees(ephem.Ecliptic(mercury).lon)30 và tính độ biến thiên góc chuẩn hóa:
+Những ngày thỏa  được đánh dấu là giai đoạn Thủy Tinh nghịch hành và phủ dải màu nền mờ lên đồ thị VN-Index Log.
+Ở tầng Định giá Chứng quyền (Tầng 6), mọi đầu vào bắt buộc quy đổi đồng bộ về đơn vị VNĐ trước khi tính toán: giá cơ sở , giá thực hiện  (VNĐ), thị giá CW  (VNĐ), tỷ lệ chuyển đổi , thời gian đến đáo hạn , lãi suất phi rủi ro  mặc định (tùy chỉnh trên UI), và độ biến động lịch sử 60 phiên chuẩn hóa năm 1. Giá hợp lý Call Warrant tính theo:
+Để tính Implied Volatility (IV) ổn định trên toàn miền hợp lệ, hệ thống kiểm tra giá trị nội tại chiết khấu : nếu  hoặc , trả về IV = None kèm nhãn "Chiết khấu dưới giá trị nội tại"; ngược lại gọi scipy.optimize.brentq giải  trên đoạn [1e-4, 5.0] với xtol = 1e-66. Module đồng thời xuất Delta (), Theta ngày (), Vega, Effective Gearing (), điểm hòa vốn Breakeven () và bảng Payoff Matrix biên độ ±20% bước 2% (21 kịch bản).
+2.4. Kiến Trúc Local-First Database, Nguồn Dữ Liệu Đa Lớp & Lịch VN-Index
+Ma Trận Nguồn Dữ Liệu Đa Lớp (core/data_fetcher.py)
+Toàn bộ kết nối nguồn dữ liệu đi qua lớp trừu tượng BaseDataProvider nhằm tách biệt tầng nạp dữ liệu khỏi lõi định lượng.
+Loại dữ liệu
+Nguồn Chính (Mặc định v5.0)
+Nguồn Dự phòng / Tùy chọn
+Quy ước kỹ thuật & Lưu ý vận hành
+OHLCV Cổ phiếu VN & Chỉ số (VNINDEX, VN30, HNX)
+SSIFastConnectProvider (ssi-sdk, REST Market Data hiện chưa thu phí cho khách hàng có TK SSI, không cần OTP14)
+VnstockOAPIProvider (vnstock-oapi Bản Cộng đồng với API key SSI/DNSE11) → YFinanceProvider ({TICKER}.VN, auto_adjust=True)
+Tự đọc corporateActions từ SSI32 để đảm bảo chuẩn hóa giá điều chỉnh sang kVND; tuân thủ header X-RATELIMIT-LIMIT/REMAINING/RESET chống lỗi 42914.
+Danh sách mã & Phân ngành ICB
+SSIFastConnectProvider (Securities List theo HOSE/HNX/UPCOM32) + Bảng ánh xạ 9 ngành ICB dựng sẵn trong config/tickers.py
+Import cập nhật từ data/manual/icb_mapping.csv
+Không phụ thuộc vào lớp Reference trả phí của vnstock v63.
+Phái sinh VN30F1M & Open Interest (OI)
+SSIFastConnectProvider (data-securitiesSummary có trường openInterest và settlementPrice17)
+Import nhanh CSV (data/manual/derivatives_vn30f.csv) nếu quyền REST phái sinh bị giới hạn37
+Nếu cột oi có giá trị NULL, Scoring Engine Tầng 4 tự tái phân bổ trọng số 25% của OI sang Basis và Market Breadth.
+BCTC & Chỉ số Cơ bản (P/E, P/B, Nợ/VCSH)
+File chuẩn hóa data/manual/fundamentals_manual.csv (có mẫu sẵn + UI Editor + hỗ trợ cập nhật nhanh qua SSI MCP trong phiên làm việc AI38)
+Cổng mở VnstockOAPIProvider / FHSC nếu người dùng có key tương ứng11
+Cập nhật định kỳ 4 lần/năm theo mùa BCTC, kiểm soát chặt độ chính xác chỉ tiêu VAS.
+Dư nợ Margin VN (2000 – Nay)
+Chuỗi toàn thị trường (market_total): Import file vnindex_margin_2000_2026.xlsx2 vào margin_history
+Proxy sớm (top15_proxy): Tổng hợp BCTC quý của nhóm CTCK đầu ngành đúng mã niêm yết 2026 (SSI, VCK, TCX, VPX, HCM, VCI, VND, MBS, VIX... mở rộng từ danh sách CTCK niêm yết1)
+Tuyệt đối không gộp chung chuỗi Proxy CTCK với chuỗi 78 CTCK toàn thị trường (457.500 tỷ đồng Q3/20262); tách biệt bằng khóa scope.
+Chứng quyền (CW)
+SSIFastConnectProvider (lọc mã CW + giá EOD) kết hợp data/manual/warrants_metadata.csv (Strike, CR, Maturity)
+UI Editor thêm/sửa danh sách CW đang theo dõi
+Tự động lọc bỏ mã có maturity_date ≤ today.
+Vĩ mô & Hàng hóa Quốc tế
+YFinanceProvider (DX-Y.NYB, VND=X, ^TNX, ^TYX, ^VIX, GC=F, BZ=F, CL=F, HG=F, SLX)
+—
+Lần đầu tải period="max", sau đó Incremental Update theo ngày.
+Yield Curve Mỹ (T10Y2Y, T10Y3M)
+FRED Direct CSV (https://fred.stlouisfed.org/graph/fredgraph.csv?id=T10Y2Y và T10Y3M, không cần API key18)
+Mirror CSV Eco3min (eco3min.fr) dự phòng nếu FRED gián đoạn18
+Lọc bỏ giá trị "." của FRED vào ngày nghỉ lễ Mỹ trước khi chuyển sang float.
+Quy Trình Đồng Bộ Local-First & Bộ Kiểm Soát Lịch VN-Index
+SQLite được cấu hình ở chế độ PRAGMA journal_mode=WAL; và PRAGMA foreign_keys=ON; để đọc và ghi đồng thời mà không khóa cơ sở dữ liệu. Khi khởi tạo lần đầu, hệ thống mặc định tải Tier 1 (~150 mã) gồm VN100, đại diện 9 ngành ICB, 4 mã Vingroup (VIC, VHM, VRE, VPL), nhóm CTCK đầu ngành và Watchlist cá nhân; người dùng có thể bấm nâng lên Tier 2 (Full HOSE ~400 mã) bất kỳ lúc nào trên trang DB Control Center. Mọi lần cập nhật tiếp theo sử dụng Incremental Update (chỉ tải từ last_updated + 1 ngày tới hiện tại), đi kèm thanh tiến trình st.progress, cơ chế tự động chờ theo X-RATELIMIT-RESET (hoặc sleep(0.25s)), retry tối đa 3 lần với backoff tăng dần, và đánh dấu status = 'ERROR' cùng st.warning() cho mã ngừng giao dịch thay vì làm gián đoạn toàn bộ phiên đồng bộ.
+Trước khi mở Dashboard hoặc chạy Screener, VNIndexCalendarGuard tính ngày giao dịch kỳ vọng gần nhất (expected_last_trading_day) theo múi giờ Asia/Ho_Chi_Minh: nếu đang trong khung Thứ 2–Thứ 6 nhưng trước 15:05 thì lùi 1 ngày, sau đó tiếp tục lùi qua Thứ 7, Chủ Nhật, các ngày lễ từ thư viện holidays.country_holidays('VN') (đã bao gồm Tết Nguyên Đán, Giỗ Tổ 10/3 ÂL, 30/4–1/5, Quốc khánh 2/9 và Ngày Văn hóa Việt Nam 24/11 từ năm 202625) cùng các ngày nghỉ bù đặc thù của HOSE trong config/vn_holidays_override.json. Nếu DB chưa được khởi tạo, giao diện khóa nút Quét và hiển thị hướng dẫn khởi tạo; nếu db_last_date < expected_last_trading_day, giao diện hiển thị Banner cảnh báo màu vàng nổi bật kèm nút [Cập nhật Database ngay] và nút phụ [Bỏ qua & Quét trên dữ liệu cũ].
+Lược Đồ SQLite Hoàn Chỉnh (12 Bảng + Chỉ Mục)
+SQL
+-- 1. Metadata danh sách mã cổ phiếu & tỷ trọng vốn hóaCREATE TABLE IF NOT EXISTS stock_metadata (    ticker TEXT PRIMARY KEY,    exchange TEXT,                      -- HOSE, HNX, UPCOM    icb_sector TEXT,                    -- 9 nhóm ngành chuẩn    icb_industry TEXT,    is_financial INTEGER DEFAULT 0,     -- 1 = Ngân hàng/Chứng khoán/Bảo hiểm (miễn trừ Nợ/VCSH < 1.2)    is_vingroup INTEGER DEFAULT 0,      -- 1 = VIC, VHM, VRE, VPL    universe_tier INTEGER DEFAULT 1,    -- 1 = Tier 1 Core, 2 = Full HOSE, 3 = Custom Watchlist    listed_shares REAL,                 -- Số lượng CP lưu hành (tính trọng số Ex-Vingroup)    market_cap_bn REAL,                 -- Vốn hóa (tỷ VNĐ)    last_updated DATE,    status TEXT DEFAULT 'ACTIVE'        -- ACTIVE, DELISTED, ERROR);-- 2. OHLCV Cổ phiếu & Chỉ số VN (kVND cho cổ phiếu, Điểm cho chỉ số; Giá đã điều chỉnh)CREATE TABLE IF NOT EXISTS ohlcv_daily (    ticker TEXT NOT NULL,    date DATE NOT NULL,    open REAL, high REAL, low REAL, close REAL, volume INTEGER,    is_adjusted INTEGER DEFAULT 1,    PRIMARY KEY (ticker, date));CREATE INDEX IF NOT EXISTS idx_ohlcv_daily_date ON ohlcv_daily(date);-- 3. OHLCV Vĩ mô & Hàng hóa Quốc tế (yfinance)CREATE TABLE IF NOT EXISTS ohlcv_global (    ticker TEXT NOT NULL,    date DATE NOT NULL,    open REAL, high REAL, low REAL, close REAL, volume INTEGER,    PRIMARY KEY (ticker, date));CREATE INDEX IF NOT EXISTS idx_ohlcv_global_date ON ohlcv_global(date);-- 4. Phái sinh VN30F (kèm Open Interest & Settlement Price)CREATE TABLE IF NOT EXISTS derivatives_daily (    ticker TEXT NOT NULL,               -- VN30F1M, VN30F2M    date DATE NOT NULL,    open REAL, high REAL, low REAL, close REAL,    settlement_price REAL,    volume INTEGER,    oi INTEGER,                         -- Open Interest (có thể NULL nếu chưa có nguồn)    PRIMARY KEY (ticker, date));-- 5. Chỉ số Tài chính Cơ bản theo QuýCREATE TABLE IF NOT EXISTS fundamentals (    ticker TEXT NOT NULL,    quarter TEXT NOT NULL,              -- '2026Q3'    pe REAL, pb REAL, bvps REAL,        -- bvps theo kVND (vd: NLG = 26.18)    total_debt REAL,                    -- tỷ VNĐ    equity REAL,                        -- tỷ VNĐ    debt_to_equity REAL,    revenue REAL,    net_income REAL,    source TEXT DEFAULT 'manual_csv',   -- api hoặc manual_csv    PRIMARY KEY (ticker, quarter));-- 6. Dư nợ Margin Lịch sử (Tách rõ toàn thị trường vs Proxy CTCK)CREATE TABLE IF NOT EXISTS margin_history (    quarter TEXT NOT NULL,              -- '2026Q3'    scope TEXT NOT NULL DEFAULT 'market_total', -- 'market_total' (Excel 78 CTCK) hoặc 'top15_proxy'    total_margin_bn REAL,               -- Tổng dư nợ margin (tỷ VNĐ)    free_float_ratio REAL,              -- % trên free-float (nếu có)    avg_liquidity_bn REAL,              -- Thanh khoản bình quân phiên (tỷ VNĐ)    vnindex_close REAL,    source TEXT,    notes TEXT,    PRIMARY KEY (quarter, scope));-- 7. Metadata Chứng quyền & Giá đóng cửa CW (Đơn vị giá CW: VND)CREATE TABLE IF NOT EXISTS warrants (    cw_ticker TEXT PRIMARY KEY,    underlying TEXT NOT NULL,    exercise_type TEXT DEFAULT 'CALL',  -- CALL (thị trường VN hiện chỉ có Call CW)    strike_price_vnd REAL NOT NULL,     -- Đơn vị VNĐ (vd: 50000)    maturity_date DATE NOT NULL,    conversion_ratio REAL NOT NULL,    issuer TEXT,    last_price_vnd REAL,                -- Giá đóng cửa CW mới nhất (VNĐ)    last_updated DATE,    status TEXT DEFAULT 'ACTIVE'        -- ACTIVE, EXPIRED);-- 8. Nhật ký Lệnh (Chỉ BUY + Scaling-Out 50/50 trên 1 dòng gốc)CREATE TABLE IF NOT EXISTS trade_journal (    id INTEGER PRIMARY KEY AUTOINCREMENT,    ticker TEXT NOT NULL,    entry_date DATE NOT NULL,    entry_price REAL NOT NULL,          -- Đơn vị kVND (vd: KDH 14.0, NLG 21.2)    quantity INTEGER NOT NULL,    stop_loss REAL,    trailing_stop REAL,    target_1 REAL,    target_2 REAL,    status TEXT DEFAULT 'OPEN',         -- OPEN, PARTIAL, CLOSED    exit_date_1 DATE,    exit_price_1 REAL,    exit_qty_1 INTEGER DEFAULT 0,    exit_date_2 DATE,    exit_price_2 REAL,    exit_qty_2 INTEGER DEFAULT 0,    pnl_pct REAL,                       -- % Lãi/Lỗ bình quân gia quyền    notes TEXT);-- 9. Đường Trendline Vẽ tay Persist SQLite (Chọn 2 điểm / Form)CREATE TABLE IF NOT EXISTS user_drawings (    id INTEGER PRIMARY KEY AUTOINCREMENT,    ticker TEXT NOT NULL,    timeframe TEXT NOT NULL,            -- '1D', '1W', '1M'    label TEXT,    date_1 DATE NOT NULL,    price_1 REAL NOT NULL,              -- Đơn vị kVND    date_2 DATE NOT NULL,    price_2 REAL NOT NULL,              -- Đơn vị kVND    extend_right INTEGER DEFAULT 1,    color TEXT DEFAULT '#FCC934',    created_at DATETIME DEFAULT CURRENT_TIMESTAMP);CREATE INDEX IF NOT EXISTS idx_drawings_ticker_tf ON user_drawings(ticker, timeframe);-- 10. Đường cong Lợi suất FREDCREATE TABLE IF NOT EXISTS yield_curve (    date DATE PRIMARY KEY,    t10y2y REAL,    t10y3m REAL);-- 11. Sự kiện Chính trị / Chính sách Vĩ môCREATE TABLE IF NOT EXISTS macro_events (    id INTEGER PRIMARY KEY AUTOINCREMENT,    event_date DATE,    event_type TEXT,                    -- FOMC, NHNN, QUOC_HOI, OTHER    description TEXT,    impact TEXT                         -- BULLISH, BEARISH, NEUTRAL);-- 12. Lưu Cấu hình Người dùng Bền vững (Trọng số 5 tầng, Điểm Tầng 1, Tier Universe)CREATE TABLE IF NOT EXISTS user_settings (    key TEXT PRIMARY KEY,    value TEXT NOT NULL,    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+2.5. Kiến Trúc 6 Tầng Top-Down & Hệ Thống Chấm Điểm (0–100)
+Công Thức Tổng Hợp Top-Down Composite Score
+Trọng số mặc định là  (slider trên Sidebar tự chuẩn hóa về tổng 100% và lưu bền vững trong user_settings)1. Nếu một chỉ số con thiếu dữ liệu (None), scoring_engine.py tự tái chuẩn hóa trọng số trên các thành phần hiện có và hiển thị ghi chú thành phần bị khuyết.
+Scoring Rubric Chi Tiết Từng Tầng
+Tầng 1 — Thiên văn & Gann (, 10%, người dùng tự chấm): Người dùng kéo slider 0–100 trên trang 1_Astro_Gann.py (lưu vào user_settings, mặc định 50), tham chiếu 5 mức gợi ý: 80–100 (Gann Time Cycle trùng vùng đảo chiều + New Moon + Thủy Tinh thuận hành), 50–70 (Gann gần vùng đảo chiều, không có tín hiệu thiên văn bất lợi), 40–50 (trung tính), 20–40 (Thủy Tinh nghịch hành + Full Moon), và 0–20 (nhiều tín hiệu cảnh báo đỉnh cùng lúc)1.
+Tầng 2 — Vĩ mô & Margin (, 20%, tự động): Tính theo  dựa trên bảng ngưỡng sau1:
+Chỉ số Vĩ mô / Margin
+Điều kiện & Mức điểm tương ứng
+Yield Curve (T10Y2Y)
+> +0,5% (90); 0% đến +0,5% (70); -0,2% đến 0% (40); < -0,2% (15).
+DXY
+< 100 (85); 100–104 (60); 104–108 (35); > 108 (15).
+VIX
+< 15 (90); 15–20 (70); 20–30 (40); > 30 (10).
+VND/USD (thay đổi 60 phiên)
+Ổn định hoặc VND tăng giá ≤ 0% (80); VND mất giá nhẹ 0–2% (55); mất giá mạnh > 2% (20).
+Margin Growth QoQ (market_total)
+Tăng < 5% (85); tăng 5–15% (65); tăng > 15% quá nóng (30); giảm mạnh > 10% giải chấp/tạo đáy (50).
+Tầng 3 — Hàng hóa & RRG Ngành (, 20%, tự động, tách 2 chế độ): RRG dùng nến tuần W-FRI, cửa sổ 12 tuần, benchmark VNINDEX, đuôi 8 kỳ theo công thức chuẩn hóa Z-score tương thích JdK (có checkbox tùy chọn làm mượt EMA 3 kỳ)6:
+Trên Master Dashboard (app.py), hệ thống dùng Market-Level  tính từ phân bố 9 ngành ICB (Leading = 100, Improving = 70, Weakening = 35, Lagging = 10, chiếm 60% trọng số) kết hợp điểm xu hướng tuần của rổ hàng hóa dẫn dắt gồm Dầu Brent BZ=F, Đồng HG=F, Thép SLX, Vàng GC=F (trên cả EMA21 & MA50 tuần = 80, ở giữa = 50, dưới cả hai = 20, chiếm 40% trọng số). Trên Trang 5 Deep-Dive và Auto-Report của từng mã, hệ thống dùng Stock-Level  gồm 45% góc phần tư RRG của ngành cổ phiếu đó (90/70/35/10), 35% xu hướng hàng hóa liên quan trực tiếp (80/50/20), và 20% điểm tương quan Pearson 20 tuần (80 nếu tương quan thuận chiều với hàng hóa tăng hoặc nghịch chiều với chi phí đầu vào giảm; 50 nếu ; 20 nếu bất lợi).
+Tầng 4 — Phái sinh & Độ rộng Thị trường (, 10%, tự động): Tính theo 1:
+Chỉ số Phái sinh / Độ rộng
+Điều kiện & Mức điểm tương ứng
+Basis (VN30F1M - VN30)
+> +5 điểm (85); 0 đến +5 (65); -5 đến 0 (40); < -5 điểm (20).
+OI Trend (5 phiên)
+OI tăng + Giá tăng (85); OI giảm + Giá tăng (60); OI giảm + Giá giảm (30); OI tăng + Giá giảm (25). Nếu OI là NULL, tự phân bổ lại trọng số.
+% Cổ phiếu > MA50 (Local DB)
+> 70% (90); 50–70% (65); 30–50% (40); < 30% (15).
+AD Line Slope (20 phiên, chuẩn hóa)
+Dương mạnh > +0,5% rổ/phiên (85); dương nhẹ (60); âm nhẹ (35); âm mạnh (15).
+Tầng 5 — VN-Index Đa khung (, 40%, tự động, có tùy chọn loại nhóm Vingroup): Tính theo , trong đó mỗi khung tổng hợp 5 thành phần 1. Quy tắc quy điểm gồm: Fisher(9) (< -2.5 cắt lên = 95; -2.5 đến -1.0 cắt lên = 75; -1.0 đến +1.0 = 50; +1.0 đến +2.0 = 35; > +2.0 = 15); RSI(14) (< 30 = 85; 30–45 = 65; 45–55 = 50; 55–70 = 40; > 70 = 20); MACD Histogram (chuyển dương = 80; âm thu hẹp = 70; dương mở rộng = 65; dương thu hẹp = 40; chuyển âm = 20); VolRatio (≥ 2,5 kèm giá tăng = 90; 1,8–2,5 kèm giá tăng = 75; 0,8–1,8 = 50; ≥ 1,8 kèm giá giảm = 25); và Trend (Close > EMA21 > EMA50 > EMA120 = 90; Close > EMA21 > EMA50 = 70; EMA50 < Close < EMA21 = 45; Close < EMA50 < EMA120 = 15)1.
+Khi bật checkbox Loại bỏ nhóm Vingroup, hệ thống tái tạo chỉ số VNINDEX_EX_VIN bằng cách loại bỏ đóng góp theo tỷ trọng vốn hóa của đúng 4 mã VIC, VHM, VRE, VPL7:
+Từ chuỗi , hệ thống tích lũy lại Close_ex_vin bắt đầu từ điểm gốc của VNINDEX, giữ nguyên tỷ lệ biên độ trong ngày (Open/Close, High/Close, Low/Close) để dựng nến OHLCV, lấy Volume_ex_vin = max(Volume_VNI - sum(Volume_Vin), 0), rồi chạy toàn bộ chỉ báo 3 khung 1M/1W/1D trên chuỗi mới6.
+Kiến Trúc Giao Diện 8 Trang (app.py + 7 Trang Con)
+File Trang Streamlit
+Chức năng & Đầu ra Chính
+app.py
+Master Dashboard & DB Control Center: trạng thái Local DB, chọn Tier Universe (Tier 1/2), nút Incremental Update, Banner cảnh báo lịch VN-Index, đồng hồ Plotly Gauge Top-Down Score (0–30 Đỏ, 30–50 Vàng, 50–70 Xanh lá, 70–100 Xanh đậm) kèm điểm từng tầng, và bảng tóm tắt Cảnh báo Danh mục đang giữ.
+pages/1_Astro_Gann.py
+Tầng 1 (10%): Pha Mặt Trăng và dải Thủy Tinh nghịch hành (ephem) phủ lên đồ thị VN-Index Log; bộ tính Gann Time Cycles, Square of 9 (đơn vị kVND, slider k và scale_factor), Gann Fan/Box Log; slider chấm điểm Tầng 1 lưu bền vững vào user_settings.
+pages/2_Macro_Margin.py
+Tầng 2 (20%): Đường cong lợi suất FRED (T10Y2Y, T10Y3M), DXY, US10Y, VND=X, VIX; biểu đồ tương quan Dư nợ Margin vs. Đỉnh/Đáy VN-Index dùng 1 đường xu hướng đơn theo trình tự thời gian kèm điểm đánh dấu Đỉnh (xanh) / Đáy (đỏ) nạp từ vnindex_margin_2000_2026.xlsx2 + tab đối chiếu Proxy CTCK; bảng theo dõi sự kiện Chính trị/Chính sách chỉnh trực tiếp trên UI.
+pages/3_Commodities_RRG.py
+Tầng 3 (20%): Biểu đồ RRG 4 góc phần tư (12W window, đuôi 8 kỳ) cho Hàng hóa quốc tế và 9 nhóm ngành ICB; ma trận tương quan Pearson 20W Hàng hóa ↔ Cổ phiếu VN; tab Backtest Lịch sử Luân chuyển Ngành (2020, 2022, 2026).
+pages/4_Derivatives_Breadth.py
+Tầng 4 (10%): Biểu đồ VN30F1M, Basis (VN30F1M - VN30) và Open Interest (từ SSI FastConnect securitiesSummary hoặc CSV); Market Breadth tính từ Local DB (% > MA50, % > MA200, Advance/Decline Line).
+pages/5_Stock_Screener_MTF.py
+Tầng 5 (40%): Bộ lọc siêu tốc trên Local DB với 3 Preset + Balance Sheet Gatekeeper + checkbox loại 4 mã Vingroup; Trạm Đồ thị Deep-Dive 100% Log 4-panel (P1: Giá + MA/EMA + Pitchfork + Auto/Manual Trendline + Gann; P2: RSI phân kỳ + Fisher; P3: MACD; P4: Volume + VolRatio + MFI; mặc định 1D=500, 1W=260, 1M=120 nến); Tab Xuất Báo cáo 1-Click Markdown/HTML (Jinja2) lưu tại data/reports/.
+pages/6_Warrants_CW.py
+Tầng 6: Lọc danh sách CW còn hạn (ACTIVE), quy đổi đồng bộ VNĐ, tự tính HV_60d từ Local DB, giải IV bằng brentq, xuất Fair Value, % Đắt/Rẻ, Delta, Theta ngày, Effective Gearing, Breakeven và Payoff Matrix 21 kịch bản (±20%, bước 2%).
+pages/7_Journal_Backtest.py
+Nhật ký lệnh (chỉ BUY), nạp sẵn 2 lệnh mẫu thực chiến KDH và NLG2, quản lý Scaling-Out 50/50 trên cùng 1 dòng gốc (OPEN → PARTIAL → CLOSED), tính pnl_pct bình quân gia quyền và vận hành Auto-Alert Engine đồng bộ lên app.py.
+Ba bộ lọc Preset trên pages/5_Stock_Screener_MTF.py được khóa tiêu chí cụ thể: Preset 1 — Bắt đáy Chu kỳ (mẫu KDH/NLG) lọc các mã có giá nằm trong biên độ ±8% quanh MA_long_1M, Fisher(9, 1M) < -2.0 bẻ ngang/cắt lên, P/B ≤ 1.3, Nợ/VCSH < 1.2 (miễn trừ nhóm Tài chính) và GTGD 20p ≥ 15 tỷ; Preset 2 — Breakout Bearish Pitchfork lọc Close(1W) > Upper Bearish Pitchfork(1W), Vol(1W) ≥ 1.8 × SMA9(Vol) và MFI(14, 1W) > 45; Preset 3 — Uptrend Pullback lọc giá hồi về trong biên độ ±2% quanh EMA21(1D) khi EMA21 > EMA50 > EMA120, RSI(14, 1D) trong vùng 40–55 và Fisher(9, 1D) > -0.51.
+Trên pages/7_Journal_Backtest.py, hai lệnh mẫu nạp sẵn gồm KDH (Mua 14.0 ngày 05/11/2026, chốt 100% tại 15.7 ngày 13/11/2026, CLOSED, lãi +12,14%) và NLG (Mua 21.2 ngày 03/11/2026, OPEN, Trailing Stop 23.95, Target 1: 26.50, Target 2: 30.50)2. Tỷ suất sinh lợi tổng hợp bình quân gia quyền trên từng dòng lệnh (với khối lượng mua ban đầu , chốt đợt 1 là  tại , chốt đợt 2 là  tại , và phần đang mở  theo giá đóng cửa mới nhất ) tính bằng:
+Máy trạng thái Auto-Alert Engine quét toàn bộ lệnh OPEN và PARTIAL theo đúng thứ tự ưu tiên nhằm tránh phát lặp cờ Target 1:
+Ưu tiên 1 (áp dụng cho cả OPEN và PARTIAL): Nếu P_last ≤ max(stop_loss, trailing_stop) → bật cờ đỏ CHẠM STOP / TRAILING STOP.
+Ưu tiên 2 (áp dụng cho cả OPEN và PARTIAL): Nếu P_last ≥ target_2 → bật cờ xanh lá CHẠM TARGET 2 — CHỐT TOÀN BỘ PHẦN CÒN LẠI.
+Ưu tiên 3 (chỉ áp dụng khi status == 'OPEN'): Nếu P_last ≥ target_1 → bật cờ vàng CHẠM TARGET 1 — CHỐT 50%.
+Trạng thái còn lại: Bật cờ xanh dương ĐANG GỒNG LÃI AN TOÀN, hiển thị % lãi/lỗ thực tế cùng gợi ý dời Trailing Stop dưới min(EMA21_1D, MA50_1D) (chỉ gợi ý trực quan, không tự ghi đè dữ liệu lệnh).
+2.6. Thư Viện, Cấu Trúc Dự Án & Lộ Trình Triển Khai 4 Pha
+Danh Sách Thư Viện (requirements.txt)
+streamlit>=1.38.0
+ssi-sdk>=3.3.2
+vnstock-oapi>=0.1.2
+yfinance>=0.2.44
+pandas>=2.2.0
+numpy>=1.26.0
+scipy>=1.13.0
+plotly>=5.24.0
+requests>=2.32.0
+holidays
+ephem>=4.2.0
+jinja2>=3.1.4
+openpyxl>=3.1.5
+python-dotenv
+Cấu Trúc Thư Mục Dự Án (topdown_quant_app/)
+Đường dẫn File / Thư mục
+Vai trò & Trách nhiệm Kỹ thuật (v5.0)
+app.py
+Trang chủ: Master Dashboard, DB Sync Control (Tier 1/2), VNIndexCalendarGuard, Top-Down Gauge & Portfolio Alerts.
+.streamlit/config.toml
+Khóa giao diện Dark Mode (theme.base = "dark"), bố cục wide.
+.env.example
+Biến môi trường mẫu (SSI_API_KEY, SSI_API_SECRET, tùy chọn DNSE_API_KEY).
+config/tickers.py
+Rổ Tier 1 (~150 mã), phân nhóm 9 ngành ICB, cờ is_financial, 4 mã Vingroup (VIC, VHM, VRE, VPL), nhóm CTCK niêm yết 2026 (SSI, VCK, TCX, VPX, HCM, VCI, VND, MBS, VIX...), mã Vĩ mô & Hàng hóa.
+config/settings.py
+Cấu hình mặc định (100% Log, đơn vị kVND, Swing N=5, trọng số 5 tầng, ngưỡng Scoring Rubric).
+config/vn_holidays.py & vn_holidays_override.json
+Tính ngày giao dịch VN-Index chuẩn bằng holidays.country_holidays('VN') (có 24/11) + ngày nghỉ bù HOSE.
+core/db_manager.py
+Quản lý SQLite WAL mode, khởi tạo 12 bảng + Indexes, Incremental Update, đọc/ghi user_settings và user_drawings.
+core/data_fetcher.py
+Lớp trừu tượng BaseDataProvider + SSIFastConnectProvider + VnstockOAPIProvider + YFinanceProvider + FREDProvider + DataNormalizer (chuẩn hóa giá điều chỉnh kVND, tôn trọng Rate-Limit header).
+core/indicators.py
+Resampling W-FRI / ME kèm last_bar_partial; tính MA/EMA (có fallback 1M), RSI(14) + phân kỳ, MACD(12,26,9), Fisher(9), MFI(14), VolRatio, VNINDEX_EX_VIN.
+core/geometry_log.py
+Auto-Pitchfork 3 điểm xác định (khử plateau, duyệt ngược  khả thi, Bearish/Bullish) & Auto-Trendline trên trục .
+core/gann_engine.py
+Gann Time Cycles, Square of 9 (đơn vị kVND + scale_factor), Gann Fan & Gann Box bất biến trên trục Log.
+core/astro_engine.py
+Pha Mặt Trăng & Thủy Tinh nghịch hành (ephem, có xử lý bước nhảy góc 360° → 0°).
+core/rrg_engine.py
+Chỉ số 9 ngành Equal-Weighted, JdK-compatible RS-Ratio/RS-Momentum (12W) & Backtest Lịch sử Luân chuyển Ngành.
+core/scoring_engine.py
+Chấm điểm 0–100 cho 5 Tầng (tách S_T3 Market-Level vs Stock-Level, tự tái chuẩn hóa trọng số khi thiếu trường dữ liệu).
+core/screener.py
+Bộ lọc siêu tốc đọc 100% từ SQLite + Balance Sheet Gatekeeper (miễn trừ nhóm Tài chính) + 3 Preset.
+core/black_scholes.py
+Định giá Call CW (khóa đơn vị VND), kiểm tra nội tại, giải IV bằng scipy.optimize.brentq, Greeks & Payoff Matrix 21 kịch bản.
+core/margin_aggregator.py
+Import vnindex_margin_2000_2026.xlsx (market_total) + tổng hợp Proxy nhóm CTCK (top15_proxy).
+core/portfolio_alerts.py
+Máy trạng thái Auto-Alert (OPEN/PARTIAL/CLOSED), tính pnl_pct bình quân gia quyền & gợi ý Trailing Stop.
+core/report_generator.py
+Xuất báo cáo phân tích 1-click Markdown / HTML qua Jinja2 vào data/reports/.
+components/charts_plotly.py
+Đồ thị Nến 100% Log 4-panel, cơ chế on_select="rerun" Chọn 2 điểm + st.data_editor lưu Trendline vào SQLite, Gann & Pitchfork overlay.
+components/ui_cards.py
+Banner cảnh báo DB, KPI cards, Plotly Gauge Top-Down Score, thẻ cảnh báo danh mục.
+pages/1_Astro_Gann.py → 7_Journal_Backtest.py
+7 trang chức năng chuyên biệt tương ứng Tầng 1 → Tầng 6 và Nhật ký lệnh.
+templates/report_template.html
+Giao diện HTML mẫu cho Auto-Report.
+data/
+quant_local.db, reports/, logs/app.log, manual/ (vnindex_margin_2000_2026.xlsx, fundamentals_manual.csv, warrants_metadata.csv, derivatives_vn30f.csv).
+Logging, Bảo Mật Khóa & Lộ Trình Nghiệm Thu 4 Pha
+Hệ thống ghi log mức INFO xoay vòng (RotatingFileHandler) ra data/logs/app.log và tuyệt đối không ghi API_KEY hay API_SECRET ra log hoặc SQLite. Mọi lệnh gọi mạng đi qua hàm bọc retry 3 lần (backoff 1s → 2s → 4s), tôn trọng header X-RATELIMIT-RESET của SSI36, và dùng st.warning() báo mã lỗi mà không làm dừng phiên đồng bộ. Tiến độ xây dựng chia thành 4 pha nghiệm thu định lượng chặt chẽ:
+Pha triển khai
+Phạm vi Module cần xây dựng
+Tiêu chí Nghiệm thu Bắt buộc (Pass Criteria)
+Pha 1 — Lõi Local DB, Lịch VN-Index & Đồ thị Log + Gann
+db_manager.py, data_fetcher.py (SSI FastConnect V3 + yfinance fallback), indicators.py, geometry_log.py, gann_engine.py, charts_plotly.py, pages/5_Stock_Screener_MTF.py.
+Khởi tạo xong Local DB Tier 1 (kiểm chứng KDH, NLG, FPT, VCG); VNIndexCalendarGuard nhận đúng T7/CN và ngày lễ VN kể cả 24/11/202625; Screener không trả NaN với mã mới niêm yết 2025 (VPL, TCX, VPX, VCK) và không loại nhầm nhóm Tài chính; đồ thị khóa cứng 100% Log, Auto-Pitchfork tìm đúng bộ ba ngay cả khi có đỉnh phụ cuối chart6, Gann Square of 9 tính chuẩn kVND (NLG 21.2k → 90° ≈ 26.05k)6, và đường Trendline lưu SQLite vẫn còn nguyên sau khi reload trang.
+Pha 2 — Vĩ mô, Margin, Hàng hóa & RRG Ngành
+pages/2_Macro_Margin.py, pages/3_Commodities_RRG.py, core/rrg_engine.py, core/margin_aggregator.py.
+Tải trực tiếp T10Y2Y và T10Y3M từ FRED CSV (lọc sạch ký tự "."); nạp mượt vnindex_margin_2000_2026.xlsx vẽ 1 đường xu hướng VN-Index gắn điểm Đỉnh/Đáy riêng biệt2; vẽ RRG 12W đuôi 8 kỳ cho 9 ngành ICB cùng bảng Backtest chu kỳ 2020/2022/2026.
+Pha 3 — Thiên văn, Phái sinh & Định giá CW Black-Scholes
+pages/1_Astro_Gann.py, pages/4_Derivatives_Breadth.py, pages/6_Warrants_CW.py, core/astro_engine.py, core/black_scholes.py.
+Chiếu đúng pha Trăng và dải Thủy Tinh nghịch hành không lỗi điểm 0°; tính Basis và Market Breadth từ Local DB (xử lý an toàn nếu OI là NULL); black_scholes.py vượt qua unit test cả 4 kịch bản biên (ATM, Deep OTM hội tụ IV = 93,16% bằng brentq, đồng bộ đơn vị VNĐ, và bắt sạch CW dưới giá trị nội tại)6.
+Pha 4 — Master Dashboard, Scoring, Auto-Alert & Auto-Report
+app.py, core/scoring_engine.py, pages/7_Journal_Backtest.py, core/portfolio_alerts.py, core/report_generator.py.
+Top-Down Score (10–20–20–10–40) lưu bền vững trong user_settings; checkbox loại nhóm Vingroup tái tính chuẩn trên 4 mã VIC, VHM, VRE, VPL6; lệnh mẫu NLG kiểm thử đủ vòng đời cảnh báo (OPEN → TARGET 1 → PARTIAL → TARGET 2/TRAILING STOP) không bắn lặp cờ Target 1; xuất 1-click báo cáo .md/.html hoàn chỉnh vào data/reports/.
+Works cited
+ke hoach xay dung he thong phan tich topdown.md
+Stock + FX, uploaded:Stock + FX
+Vnstock - Hệ sinh thái tự động hoá cá nhân trong nghiên cứu đầu tư, https://vnstocks.com/
+GitHub - thinh-vu/vnstock: A beginner-friendly yet powerful Python, https://github.com/thinh-vu/vnstock
+How to Track Plotly Relayout Events and Store Date Ranges in, https://discuss.streamlit.io/t/how-to-track-plotly-relayout-events-and-store-date-ranges-in-streamlit/88008
+unknown_url
+Cổ phiếu VPL: Toàn cảnh Vinpearl và diễn biến giá 2025, https://stockkisvn.vn/co-phieu-vpl/
+TCBS chính thức niêm yết, mở màn làn sóng IPO ngành chứng khoán, https://cafef.vn/tcbs-chinh-thuc-niem-yet-mo-man-lan-song-ipo-nganh-chung-khoan-vps-tiep-noi-ky-vong-188251024150951065.chn
+‎VPBankS lên sàn HoSE sau thương vụ IPO lớn nhất ngành chứng, https://baochinhphu.vn/vpbanks-len-san-hose-sau-thuong-vu-ipo-lon-nhat-nganh-chung-khoan-102251205162950945.htm
+Chứng khoán VPS và VPBankS sẽ đưa cổ phiếu lên sàn HoSE, https://baodautu.vn/chung-khoan-vps-va-vpbanks-se-dua-co-phieu-len-san-hose-trong-thang-12-d450333.html
+https://vnstocks.com/docs/vnstock-oapi/gioi-thieu
+https://vnstocks.com/docs/vnstock/v6/thi-truong-market
+Truy xuất và chuẩn hoá báo cáo tài chính - Vnstock, https://vnstocks.com/docs/vnstock/v6/bao-cao-tai-chinh-fundamental
+1. Dịch vụ FastConnect V3 - SSI Developer Portal, https://developers.ssi.com.vn/docs/faq/service-overview
+SSI Python SDK - PyPI, https://pypi.org/project/ssi-sdk/
+Giới thiệu SSI SDK, https://developers.ssi.com.vn/docs/sdk/overview
+data-securitiesSummary | SSI Developer Portal, https://developers.ssi.com.vn/docs/api-reference/data-securitiesSummary
+T10Y2Y: 10Y–2Y US Treasury Yield Spread Daily Data - Eco3min, https://eco3min.fr/en/yield-curve-inversion-history-dataset/
+st.plotly_chart - Streamlit Docs, https://docs.streamlit.io/develop/api-reference/charts/st.plotly_chart
+Templates and example code for creating Streamlit Components, https://github.com/streamlit/component-template
+Vinpearl sắp niêm yết gần 1,8 tỷ cổ phiếu trên HoSE, định giá gần, https://vneconomy.vn/vinpearl-sap-niem-yet-gan-1-8-ty-co-phieu-tren-hose-dinh-gia-gan-130-000-ty-dong.htm
+Vinpearl: HoSE chấp thuận niêm yết 1,79 tỷ cổ phiếu, mục tiêu lãi, https://etime.danviet.vn/vinpearl-hose-chap-thuan-niem-yet-179-ty-co-phieu-muc-tieu-lai-1700-ty-dong-nam-2025-d1329850.html
+Vinpearl chào sàn, tổng vốn hoá nhà Vin xấp xỉ 30 tỷ USD - DNSE, https://www.dnse.com.vn/senses/tin-tuc/vinpearl-chao-san-tong-von-hoa-nha-vin-xap-xi-30-ty-usd-35049535
+VPS quý III/2026: Tích lũy nền tảng, kiến tạo tương lai, https://vps.com.vn/bai-viet/vps-quy-iii2026-tich-luy-nen-tang-kien-tao-tuong-lai
+Vietnam Customs Holidays 2026 and 2027 | Clearance Planner, https://tftior.com/customs-clearance-planner/vietnam/
+Hiring in Vietnam | Complete 2026 Employer Guide - Employsome, https://employsome.com/hire/vietnam/
+Releases · vacanza/holidays - GitHub, https://github.com/vacanza/holidays/releases
+holidays/CHANGES.md at dev · vacanza/holidays - GitHub, https://github.com/vacanza/holidays/blob/dev/CHANGES.md
+Relative Rotation Graph Calculations Troubleshooting : r/algotrading, https://www.reddit.com/r/algotrading/comments/n5qd5c/relative_rotation_graph_calculations/
+PyEphem Quick Reference - Rhodes Mill, https://rhodesmill.org/pyephem/quick.html
+Vnstock Open API, https://vnstocks.com/docs/vnstock-oapi
+Tổng quan hệ thống | SSI Developer Portal, https://developers.ssi.com.vn/docs/getting-started
+Chỉ số VNIndex qua các năm (2000 – 2026): Phân tích lịch sử biến, https://www.finhay.com.vn/chi-so-vnindex-qua-cac-nam
+Plotly charts require 2-3 clicks to fire a selection event - Using Streamlit, https://discuss.streamlit.io/t/plotly-charts-require-2-3-clicks-to-fire-a-selection-event/121914
+The PyEphem Tutorial - Rhodes Mill, https://rhodesmill.org/pyephem/tutorial.html
+3. Vấn đề kỹ thuật khi tích hợp - SSI Developer Portal, https://developers.ssi.com.vn/docs/faq/technical-integration
+Enums & Hằng số | SSI Developer Portal, https://developers.ssi.com.vn/docs/sdk/nodejs/transport-classes
+Hướng dẫn công cụ (tools) - SSI MCP, https://mcp.ssi.com.vn/docs/huong-dan-tool/
+Thắng lớn quý 1, VPS báo lãi kỷ lục gần 1.550 tỷ đồng, https://mekongasean.vn/thang-lon-quy-1-vps-bao-lai-ky-luc-ga-n-1550-ty-do-ng-53933.html
+DGS10: 10-Year US Treasury Yield Daily Data Since 1962 - Eco3min, https://eco3min.fr/en/us-10y-treasury-yield-dataset/

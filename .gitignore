@@ -1,0 +1,56 @@
+# ==============================================================================
+# .gitignore — Top-Down Quant System (v5.0)
+# ==============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+
+# Local Database Files & SQLite WAL mode artifacts (Strictly Excluded)
+data/*.db
+data/*.db*
+data/*.db.bak
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite3
+
+# Temporary / Generated Reports & Logs (Strictly Excluded)
+data/reports/*
+!data/reports/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
+*.log
+
+# Large Assets (>100MB exceeds GitHub hard limit)
+bulkowski_vietnam_edition_1.pdf
+*.pdf
+
+# Streamlit Local Secrets
+.streamlit/secrets.toml
+
+# Environment Variables & API Keys
+.env
+.env.*
+!.env.example
+
+# Python Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Editor & OS Metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+*.bak

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Báo Cáo Phân Tích Kỹ Thuật & Top-Down: {{ ticker }}</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0E1117; color: #FFFFFF; line-height: 1.6; padding: 30px; margin: 0; }
+        .container { max-width: 900px; margin: 0 auto; background: #1E222D; padding: 40px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+        h1, h2, h3 { color: #2962FF; border-bottom: 1px solid #2A2E39; padding-bottom: 8px; }
+        .badge { display: inline-block; padding: 4px 12px; border-radius: 4px; font-weight: bold; margin-right: 8px; }
+        .badge-green { background-color: #00C853; color: white; }
+        .badge-blue { background-color: #2962FF; color: white; }
+        .badge-yellow { background-color: #FFD600; color: black; }
+        .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 20px 0; }
+        .metric-card { background: #2A2E39; padding: 15px; border-radius: 8px; text-align: center; }
+        .metric-value { font-size: 22px; font-weight: bold; color: #4CAF50; }
+        .metric-label { font-size: 12px; color: #9E9E9E; text-transform: uppercase; margin-top: 5px; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #2A2E39; }
+        th { background: #131722; color: #9E9E9E; }
+        .footer { font-size: 12px; color: #757575; text-align: center; margin-top: 40px; border-top: 1px solid #2A2E39; padding-top: 15px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>BÁO CÁO PHÂN TÍCH ĐẦU TƯ TOP-DOWN: {{ ticker }}</h1>
+    <p><strong>Ngày xuất báo cáo:</strong> {{ date_str }} | <strong>Đơn vị giá:</strong> nghìn VNĐ (kVND)</p>
+
+    <div class="metric-grid">
+        <div class="metric-card">
+            <div class="metric-value">{{ current_price }}</div>
+            <div class="metric-label">Giá Đóng Cửa (kVND)</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">{{ rsi_1d }}</div>
+            <div class="metric-label">RSI(14) 1D</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">{{ fisher_1d }}</div>
+            <div class="metric-label">Fisher Transform 1D</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">{{ avg_liquidity }}</div>
+            <div class="metric-label">GTGD 20p (Tỷ VNĐ)</div>
+        </div>
+    </div>
+
+    <h2>1. Tổng Hợp Tín Hiệu Đa Khung Thời Gian (1M &rarr; 1W &rarr; 1D)</h2>
+    <table>
+        <tr>
+            <th>Khung thời gian</th>
+            <th>Vị thế Kỹ thuật</th>
+            <th>Chỉ báo Trọng yếu</th>
+            <th>Đánh giá Thực chiến</th>
+        </tr>
+        <tr>
+            <td><strong>Khung Tháng (1M)</strong></td>
+            <td>{{ mtf_status['1M'].position }}</td>
+            <td>Fisher: {{ mtf_status['1M'].fisher }} | {{ mtf_status['1M'].ma_ref }}</td>
+            <td>{{ mtf_status['1M'].assessment }}</td>
+        </tr>
+        <tr>
+            <td><strong>Khung Tuần (1W)</strong></td>
+            <td>{{ mtf_status['1W'].position }}</td>
+            <td>VolRatio: {{ mtf_status['1W'].vol_ratio }}x | MFI: {{ mtf_status['1W'].mfi }}</td>
+            <td>{{ mtf_status['1W'].assessment }}</td>
+        </tr>
+        <tr>
+            <td><strong>Khung Ngày (1D)</strong></td>
+            <td>{{ mtf_status['1D'].position }}</td>
+            <td>RSI: {{ rsi_1d }} | Fisher: {{ fisher_1d }}</td>
+            <td>{{ mtf_status['1D'].assessment }}</td>
+        </tr>
+    </table>
+
+    <h2>2. Mục Tiêu Giá & Kháng Cự Gann Square of 9</h2>
+    <table>
+        <tr>
+            <th>Góc độ (&theta;)</th>
+            <th>Giá Mục Tiêu (kVND)</th>
+            <th>Biên Độ Lợi Nhuận (%)</th>
+            <th>Khuyến Nghị Chiến Lược</th>
+        </tr>
+        {% for g in gann_targets %}
+        <tr>
+            <td><strong>{{ g.label }}</strong></td>
+            <td>{{ g.price }}</td>
+            <td style="color: {{ '#4CAF50' if g.pct_change > 0 else '#FF5252' }}">{{ '+' if g.pct_change > 0 else '' }}{{ g.pct_change }}%</td>
+            <td>{{ g.recommendation }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <h2>3. Kế Hoạch Quản Trị Vị Thế & Scaling-Out 50/50</h2>
+    <ul>
+        <li><strong>Điểm vào lệnh (Entry):</strong> {{ entry_rec }}</li>
+        <li><strong>Ngưỡng Cắt lỗ (Stop Loss):</strong> {{ stop_rec }} (Tuân thủ nghiêm ngặt)</li>
+        <li><strong>Target 1 (Chốt 50%):</strong> {{ target1_rec }} &mdash; Khóa lợi nhuận ngắn hạn tại cản MA120/EMA120 (1D)</li>
+        <li><strong>Target 2 (Gồng 50% còn lại):</strong> {{ target2_rec }} &mdash; Theo dõi Trailing Stop dưới EMA21/MA50 nến ngày</li>
+    </ul>
+
+    <div class="footer">
+        Được tạo tự động bởi Hệ Thống Phân Tích Đầu Tư Top-Down 6 Tầng & Local Quant Database v5.0
+    </div>
+</div>
+</body>
+</html>
